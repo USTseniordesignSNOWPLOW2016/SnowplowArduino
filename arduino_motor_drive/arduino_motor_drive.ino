@@ -21,7 +21,8 @@ void setup()
   pinMode(13, OUTPUT);
   nh.initNode();
   nh.subscribe(sub);
-  Serial.begin(57600);
+  nh.getHardware()->setBaud(9600);//force the baud rate to be set at 9600 (if this has problems, remove this and replace the line below to 57600)
+  Serial.begin(9600);
 }
 
 void loop()
