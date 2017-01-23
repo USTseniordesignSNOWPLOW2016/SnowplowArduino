@@ -1,101 +1,75 @@
-/*-----( Import needed libraries )-----*/
-
+//Arduino Ultrasonic Sensor Publisher (3 Sensors - Front, Middle, Right)
 #include <ros.h>
-#include <std_msgs/Int32MultiArray.h>
+#include <plow_waypoint_nav/plow_ultrasonic.h>
 #include <NewPing.h>
-#define SONAR_NUM 6
-#define MAX_DISTANCE 200
-#define PING_INTERVAL 35
-
-/*--------Instantiate node handle-------------*/
-
-ros::NodeHandle nh;
-std_msgs::Int32MultiArray sonar;
-ros::Publisher sonar_pub("sonar", &sonar);
-
 
 /*-----( Declare Constants and Pin Numbers )-----*/
+#define  TRIGGER_PIN1  11
+#define  ECHO_PIN1     10
+#define  TRIGGER_PIN2  9
+#define  ECHO_PIN2     8
+#define  TRIGGER_PIN3  7
+#define  ECHO_PIN3     6
+#define MAX_DISTANCE 200 // Maximum distance we want to ping for (in centimeters).
+                         //Maximum sensor distance is rated at 400-500cm.
 
-int i, ros_array[6] = {1,1,1,1,1,1};
-float data_rate = 100;
-float data_rate_inv;
-char dim0_label[] = "sonar";
-unsigned long pingTimer[SONAR_NUM]; 
-long cm[SONAR_NUM];         
-uint8_t currentSensor = 0;
-void messageCb(const std_msgs::Int32MultiArray& msg){
-  data_rate = msg.data[0];
-  data_rate_inv = (1/data_rate)*1000;
-  ros_array[4] = msg.data[1];
-  ros_array[5] = msg.data[2];
-  ros_array[2] = msg.data[3];
-  ros_array[3] = msg.data[4];
-  }
-
-ros::Subscriber<std_msgs::Int32MultiArray> sensors("msg", &messageCb);
+/*--------Instantiate node handle-------------*/
+ros::NodeHandle nh;
+// std_msgs::Int32MultiArray sonar;
+plow_waypoint_nav::plow_ultrasonic UltraData; //define a message of type "plow_ultrasonic" that will be used to publish ultrasonic sensor values
+// ros::Publisher sonar_pub("sonar", &sonar);
+ros::Publisher Ultra_pub("/ultrasonic_data", &UltraData); //define a publisher for publishing all of the ultrasonic sensor data
 
 /*-----( Declare objects )-----*/
-  
-NewPing sonarSENSOR[SONAR_NUM] = {     
-  NewPing(9, 2, MAX_DISTANCE), /*each of these assigns the pins and the max distance for that sensor*/
-  NewPing(8, 3, MAX_DISTANCE),
-  NewPing(11, 6, MAX_DISTANCE), 
-  NewPing(10, 7, MAX_DISTANCE),
-  NewPing(13, 4, MAX_DISTANCE),
-  NewPing(12, 5, MAX_DISTANCE)
-};
+NewPing sonar1(TRIGGER_PIN1, ECHO_PIN1, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
+NewPing sonar2(TRIGGER_PIN2, ECHO_PIN2, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
+NewPing sonar3(TRIGGER_PIN3, ECHO_PIN3, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
+/*-----( Declare Variables )-----*/
+int DistanceIn;
+int DistanceCm;
+int Front;
+int Side1;
+int Side2;
 
-void setup() {
 
-  Serial.println("------------------BEGIN----------------------");
-  Serial.println("---------------------------------------------------");
-  pingTimer[0] = millis() + 75;           
-  for (uint8_t i = 1; i < SONAR_NUM; i++) 
-    {pingTimer[i] = pingTimer[i - 1] + PING_INTERVAL;}
-    
+
+void setup()
+{
+  // Serial.begin(9600);
   nh.initNode();
-  sonar.data_length = 6;
-  sonar.layout.dim = (std_msgs::MultiArrayDimension *)
-  malloc(sizeof(std_msgs::MultiArrayDimension) * 2);
-  sonar.layout.dim[0].label = dim0_label;
-  sonar.layout.dim[0].size = 6;
-  sonar.layout.dim[0].stride = 1*6;
-  sonar.layout.data_offset = 0;
-  sonar.data = (int32_t *)malloc(sizeof(int)*6);
+  nh.advertise(Ultra_pub);
   
-  nh.advertise(sonar_pub);
-  nh.subscribe(sensors);
+}
+
+void checkSensor(char sensor)
+{
+  switch(sensor)
+  {
+    case 'L':
+      delay(100);
+      UltraData.Sensor_L = sonar1.ping_cm();
+    break;
+    case 'M':
+      delay(100);
+      UltraData.Sensor_M = sonar2.ping_cm();
+    break;
+    case 'R':
+      delay(100);
+      UltraData.Sensor_R = sonar3.ping_cm();        
+    break;
+
+  }
 }
 
 void loop()
 {
-  for(uint8_t i = 0; i < SONAR_NUM; i++){
-    if(ros_array[i]){
-    if (millis() >= pingTimer[i]) {         // Is it this sensor's time to ping?
-      pingTimer[i] += PING_INTERVAL * SONAR_NUM;  // Set next time this sensor will be pinged.
-      if (i == 0 && currentSensor == SONAR_NUM - 1) oneSensorCycle();
-      sonarSENSOR[currentSensor].timer_stop();          // Make sure previous timer is canceled before starting a new ping (insurance).
-      currentSensor = i;                          // Sensor being accessed.
-     // cm[currentSensor] = 400;                      // Make distance zero in case there's no ping echo for this sensor.
-      sonarSENSOR[currentSensor].ping_timer(echoCheck); 
-    }
-    }
-  else{cm[i] = 400;}
-  }
-sonar.data = (int32_t*)&cm;  
-sonar_pub.publish(&sonar);
-nh.spinOnce();
-delay(data_rate_inv);
+  checkSensor('L');
+  delay(100);
+  checkSensor('M');
+  delay(100);
+  checkSensor('R');
+  delay(100);
+  Ultra_pub.publish(UltraData); //publish the ultrasonic scans
+  nh.spinOnce();
 }
 
-void echoCheck() { // If ping received, set the sensor distance to array.
-  if (sonarSENSOR[currentSensor].check_timer())
-    cm[currentSensor] = sonarSENSOR[currentSensor].ping_result / US_ROUNDTRIP_CM;
-}
-
-void oneSensorCycle() { 
-  
-  for (uint8_t i = 0; i < SONAR_NUM; i++) {
-    sonar.data[i] = cm[i];
-  }
-}
